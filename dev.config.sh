@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+export APP_ORG="atomantic"
+export APP_NAME="dockerized"
+export APP_PORT_EXTERNAL=4225
+export APP_PORT_INTERNAL=3000
+export APP_BOOT_TIME=5
+export VM_NAME="dockerized-vm"
+export DOCKER_REPO="hub.docker.com:5000"
+export VM_CREATE_TIME=10

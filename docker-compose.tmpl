@@ -1,0 +1,7 @@
+web:
+  build: .
+  ports:
+   - "4225:3000"
+  volumes:
+   - /rsync_PWD_:/app
+  env_file: .env

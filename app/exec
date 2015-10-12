@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+# note: this script must have a foreground running process as the final exec, otherwise your docker image will just finish
+# and stop as soon as you run it
+
+python -m SimpleHTTPServer 3000
