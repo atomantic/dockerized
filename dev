@@ -10,7 +10,7 @@
 # https://github.com/atomantic/generator-dockerize
 #
 # @author Adam Eivy                       #
-# DockerDev: 1.6.0                        #
+# DockerDev: 1.6.2                        #
 ###########################################
 
 # project specific config
@@ -256,64 +256,34 @@ function ensureDocker() {
 function startRsync(){
   # only do one
   stopRsync
-  cd app
-  docker-rsync $VM_NAME &
-  cd -
+  dir=$(pwd);
+  docker-rsync -src="$dir/$APP_LOC" -dst="/Users/$(whoami)/rsync$dir/$APP_LOC" $VM_NAME &
 }
 
 function stopRsync(){
-  killbyname docker-rsync &>/dev/null
+  ps ax | grep rsync | grep $(pwd) | grep -v grep
+  if [ $? != 0 ]; then
+    return 0;
+  fi
+  kill -9 `ps ax | grep rsync | grep $(pwd) | grep -v grep | awk '{print $1}'`
+  return 1;
 }
 
 function ensureMount(){
     # create an rsync directory in my home directory
     # so we don't use up all the space on the virtual machine
-    # (/Users is mounted)
+    # root path
+    # (/Users is already mounted as a share by VirtualBox)
     if [ ! -d "/Users/$(whoami)/rsync" ]; then
       mkdir -p /Users/$(whoami)/rsync
     fi
-    VBoxManage showvminfo "$VM_NAME" | grep rsync
-    if [[ $? != 0 ]]; then
-      docker-machine ls | grep $VM_NAME | grep Running
-      if [[ $? == 0 ]]; then
-        # have to stop the VM :(
-        # otherwise, it will fail to add the shared directory
-        docker-machine stop $VM_NAME
-      fi
-      # add this directory to the VirtualBox mount (otherwise, we can only mount things from ~/)
-      # which will appear mountable within docker as /Users...
-      VBoxManage sharedfolder add "$VM_NAME" --name "rsync" --hostpath "/Users/$(whoami)/rsync" --automount
-      VBoxManage setextradata $VM_NAME VBoxInternal2/SharedFoldersEnableSymlinksCreate/rsync 1
-    fi
-    docker-machine ls | grep $VM_NAME | grep Running
-    if [[ $? != 0 ]]; then
-        ensureDocker
-    fi
-    # docker-rsync will only write to /rsync on the vm
-    docker-machine ssh $VM_NAME 'sudo mkdir -p /rsync'
-    # make sure we mount the rsync directory:
-    bot "mounting app folder in vm..."
-    docker-machine ssh $VM_NAME 'sudo mount -t vboxsf -o uid=1000,gid=50 rsync /rsync'
-    if [[ $? != 0 ]]; then
-        bot "drats. That didn't work. We don't have a solution for this yet. If you find one, please pull-request."
-        exit -1
-    fi
+    # we will then use docker-rsync to rsync into this directory
 }
 
 # OS_VERSION=$(sw_vers -productVersion);
 # OS_MAJOR=`echo $OS_VERSION | cut -d. -f1`
 # OS_MINOR=`echo $OS_VERSION | cut -d. -f2`
 # OS_PATCH=`echo $OS_VERSION | cut -d. -f3`
-# kill all instances of a process by name
-function killbyname()
-{
-    ps ax | grep $1 | grep -v grep
-    if [ $? != 0 ]; then
-      return 0;
-    fi
-    kill -9 `ps ax | grep $1 | grep -v grep | awk '{print $1}'`
-    return 1;
-}
 function defaultError()
 {
     error "sorry, we have not yet figured out an automated solution to this problem. Please investigate and pull-request to https://github.com/atomantic/generator-dockerize"
@@ -382,7 +352,9 @@ case "$1" in
         fi
 
         # setup docker-compose.yml
-        cat docker-compose.tmpl | sed "s~_PWD_~"$(pwd)"/app~" > docker-compose.yml
+        me=$(whoami)
+        dir=$(pwd)
+        cat docker-compose.tmpl | sed "s~_SYNCDIR_~/Users/$me/rsync$dir/$APP_LOC~" > docker-compose.yml
 
         # run dev.init instructions (install base npm modules, etc)
         source ./dev.init.sh
@@ -424,15 +396,15 @@ case "$1" in
         if [ -z $1 ]; then
           # run any version deployed to docker hub
           bot "checking $REMOTE_NAME for version tag $2"
-          docker run -t $REMOTE_NAME:$2
-          docker exec -i -t $(docker ps | grep $REMOTE_NAME:$2 | awk '{print $1;}') bash
+          docker run -i -t $REMOTE_NAME:$2 bash
           exit $?;
         fi
-        docker ps | grep $APP_NAME_LOCAL
-        if [ $? != 0 ]; then
-          dockerStart
+        instance=$(docker ps | grep $APP_NAME_LOCAL | awk '{print $1;}')
+        if [ -z "$instance" ]; then
+          docker run -i -t $APP_NAME_LOCAL bash
+        else
+          docker exec -i -t $instance bash
         fi
-        docker exec -i -t $(docker ps | grep $APP_NAME_LOCAL | awk '{print $1;}') bash
         ;;
     start)
         ensureDocker
