@@ -10,8 +10,10 @@
 # https://github.com/atomantic/generator-dockerize
 #
 # @author Adam Eivy                       #
-# DockerDev: 1.7.0                        #
+# @maintainer Joseph Sturtevant           #
+# DockerDev: 2.0.0                       #
 ###########################################
+
 
 # project specific config
 source ./dev.config
@@ -19,7 +21,8 @@ source ./dev.config
 # docker-compose will strip underscores from the app name to tack on _web
 APP_NAME_LOCAL=${APP_NAME//_/}"_web"
 REMOTE_NAME="$DOCKER_REPO/$APP_ORG/$APP_NAME"
-RSYNC_URL="http://distro.ibiblio.org/tinycorelinux"
+RSYNC_URL="http://repo.tinycorelinux.net/"
+HOST_DOCKER_DAEMON_PORT=2376
 
 ###
 # echo helper functions
@@ -30,35 +33,24 @@ COL_RESET=$ESC_SEQ"39;49;00m"
 COL_RED=$ESC_SEQ"31;01m"
 COL_GREEN=$ESC_SEQ"32;01m"
 COL_YELLOW=$ESC_SEQ"33;01m"
-COL_BLUE=$ESC_SEQ"34;01m"
-COL_MAGENTA=$ESC_SEQ"35;01m"
-COL_CYAN=$ESC_SEQ"36;01m"
 
 function ok() {
-    echo -e "$COL_GREEN[ok]$COL_RESET "$1
+  echo -e "$COL_GREEN[ok]$COL_RESET "$1
 }
-
 function bot() {
-    echo
-    echo -e "$COL_GREEN\[._.]/$COL_RESET - "$1
+  echo; echo -e "$COL_GREEN\[._.]/$COL_RESET - "$1
 }
-
 function running() {
-    echo
-    echo -en " ⇒ "$1"..."
+  echo; echo -en " ⇒ "$1"..."
 }
-
 function action() {
-    echo -e "$COL_YELLOW[action]$COL_RESET"
-    echo -en " ⇒ "$1"..."
+  echo -e "$COL_YELLOW[action]$COL_RESET"; echo -en " ⇒ "$1"..."
 }
-
 function warn() {
-    echo -e "$COL_YELLOW[warning]$COL_RESET "$1
+  echo -e "$COL_YELLOW[warning]$COL_RESET "$1
 }
-
 function error() {
-    echo -e "$COL_RED[error]$COL_RESET "$1
+  echo -e "$COL_RED[error]$COL_RESET "$1
 }
 
 ###
@@ -154,13 +146,12 @@ function checkInstall() {
 ###
 function dockerStart(){
 
-    # still working on VPN fix
-    #ensurePort $APP_PORT_EXTERNAL
     running "starting rsync into $VM_NAME"
     startRsync
     ok
 
     APPURL=http://$(docker-machine ip $VM_NAME 2>/dev/null):$APP_PORT_EXTERNAL
+
     # instead of loading the VBox IP, we are routing localhost:$APP_PORT_EXTERNAL to VM
     # APPURL=http://localhost:$APP_PORT_EXTERNAL
 
@@ -214,10 +205,6 @@ function dockerStop(){
 
 function shellinit(){
     running "shellinit"
-    # make sure docker port routing is in place (need this if we are on cisco vpn on yosemite)
-    # https://github.com/boot2docker/boot2docker/issues/392#issuecomment-66694197
-    # still working on VPN fix... this isn't working with docker-machine
-    # maybe a fix in here somewhere: https://github.com/docker/machine/issues/1031
     #ensurePort 2376
     #export DOCKER_HOST=tcp://127.0.0.1:2376;
     eval "$(docker-machine env $VM_NAME)"
@@ -232,8 +219,6 @@ function ensureDocker() {
     docker-machine ls | grep $VM_NAME > /dev/null 2>&1
     if [[ $? != 0 ]]; then
       # vm doesn't exist
-      action "$VM_NAME vm does not exist. Creating it"
-
       docker-machine create -d virtualbox $VM_NAME
     fi
     docker-machine ls | grep $VM_NAME | grep Running > /dev/null 2>&1
@@ -244,12 +229,12 @@ function ensureDocker() {
     ok
 
     shellinit
-
+    set +e
     docker ps > /dev/null 2>&1;
     if [[ $? != 0 ]]; then
       defaultError
     else
-      return 1;
+     return 1;
     fi
 }
 
@@ -257,7 +242,7 @@ function startRsync(){
   # only do one
   stopRsync
   dir=$(pwd);
-  docker-rsync -src="$dir/$APP_LOC" -dst="/Users/$(whoami)/rsync$dir/$APP_LOC" $VM_NAME &
+  docker-rsync -watch=true -src="$dir/$APP_LOC" -dst="/Users/$(whoami)/rsync$dir/$APP_LOC" $VM_NAME &
   if [[ $? != 0 ]]; then
     bot "Fixing URL path in $VM_NAME"
     if [[ "$(docker-machine ssh $VM_NAME 'cat /opt/tcemirror')" != "$RSYNC_URL" ]]; then
@@ -274,11 +259,13 @@ function startRsync(){
 }
 
 function stopRsync(){
-  ps ax | grep rsync | grep $(pwd) | grep -v grep > /dev/null 2>&1
-  if [ $? != 0 ]; then
+  #Check if rsync is already running
+  if [[ $(ps ax | grep rsync | grep $(pwd) | grep -v grep | awk '{print $1}') == "" ]]; then
     return 0;
   fi
+  #Else kill any processes where rsync is running
   kill -9 `ps ax | grep rsync | grep $(pwd) | grep -v grep | awk '{print $1}'`
+  #Returning 1 stops script
   return 1;
 }
 
@@ -292,7 +279,6 @@ function ensureMount(){
     fi
     # we will then use docker-rsync to rsync into this directory
 }
-
 # OS_VERSION=$(sw_vers -productVersion);
 # OS_MAJOR=`echo $OS_VERSION | cut -d. -f1`
 # OS_MINOR=`echo $OS_VERSION | cut -d. -f2`
@@ -303,10 +289,24 @@ function defaultError()
     exit 1;
 }
 
+#Allows VM to connect to $DOCKER_REPO insecure registry
+function insecureRegistry()
+{
+    ensureDocker
+    docker-machine ssh $VM_NAME "grep 'insecure-registry' /var/lib/boot2docker/profile" > /dev/null 2>&1
+    if [[ $? != 0 ]]; then
+      docker-machine ssh $VM_NAME "sudo sed -i \"s/EXTRA_ARGS='/EXTRA_ARGS='\n--insecure-registry $DOCKER_REPO/\" /var/lib/boot2docker/profile"
+      docker-machine ssh $VM_NAME "sudo /etc/init.d/docker restart"
+      sleep 1
+      docker-machine restart $VM_NAME
+    fi
+    ok
+}
+
 case "$1" in
     clean)
         # purges the docker images relating to this app
-        shellinit
+        ensureDocker
         docker ps -a | grep $APP_NAME_LOCAL
         if [[ $? == 0 ]]; then
           docker rm -f $(docker ps -a | grep $APP_NAME_LOCAL | awk '{print $1;}')
@@ -327,14 +327,14 @@ case "$1" in
         ok
         ;;
     init)
-        bot "Hi, I'm going to setup/update your environment and startup the app."
+        bot "Hi, I'm going to setup/update your environment and startup the app using Docker"
 
         bot "working on "$APP_ORG/$APP_NAME:$APP_PORT_EXTERNAL;
 
+        need_tools=0
         install_homebrew
         require_tap synack/docker
         require_brew docker-rsync
-        need_tools=0
 
         needed_software=( "docker" "docker-compose" "docker-machine" "vboxmanage" )
         for sft in "${needed_software[@]}"; do
@@ -345,23 +345,9 @@ case "$1" in
         done
 
         if [ $need_tools == 1 ]; then
-          bot "You can either install the base set of tools with Docker Toolbox: https://www.docker.com/toolbox\nOr install via homebrew."
-          read -r -p "Use Homebrew? [Y|n]" response
-          if [[ ! $response =~ ^(no|n|N) ]];then
-              install_brewcask
-              require_brew docker
-              require_brew docker-compose
-              require_brew docker-machine
-              require_cask virtualbox
-              ok
-          else
-            read -r -p "Did you install Docker Toolkit? [Y|n]" responseToolbox
-            if [[ $responseToolbox =~ ^(no|n|N) ]];then
-              bot "well, go install Docker Toolkit, then run 'dev init' again"
-              exit 1
-            fi
-            ok
-          fi
+          install_brewcask
+          require_cask dockertoolbox
+          ok
         fi
 
         # setup docker-compose.yml
@@ -369,14 +355,21 @@ case "$1" in
         dir=$(pwd)
         cat docker-compose.tmpl | sed "s~_SYNCDIR_~/Users/$me/rsync$dir/$APP_LOC~" > docker-compose.yml
 
-        # run dev.init instructions (install base npm modules, etc)
-        source ./dev.init.sh
+        # run dev.init instructions (if it exists)
+        if [[ -e ./dev.init.sh ]]; then
+          source ./dev.init.sh
+        fi
 
         ensureMount
 
-        ensureDocker
+        echo "launching quickstart shell. once this is done"
+        echo "cd "$(pwd)
+        echo "./dev start"
 
-        dockerStart
+        bash --login '/Applications/Docker/Docker Quickstart Terminal.app/Contents/Resources/Scripts/start.sh'
+        ;;
+    insecure_registry)
+        insecureRegistry
         ;;
     purge)
         bot "Starting Purge. ensuring rsync isn't running..."
@@ -418,6 +411,11 @@ case "$1" in
         fi
         bot "run 'dev init' again"
         ;;
+    rebuild)
+        dockerStop
+        docker-compose build
+        dockerStart $1
+        ;;
     restart)
         ensureDocker
         dockerStop
@@ -428,13 +426,13 @@ case "$1" in
         if [ -z $1 ]; then
           # run any version deployed to docker hub
           bot "checking $REMOTE_NAME for version tag $2"
-          docker run -t $REMOTE_NAME:$2
+          docker run --rm=true -t $REMOTE_NAME:$2
           docker exec -i -t $(docker ps | grep $REMOTE_NAME:$2 | awk '{print $1;}') bash
           exit $?;
         fi
         instance=$(docker ps | grep $APP_NAME_LOCAL | awk '{print $1;}')
         if [ -z "$instance" ]; then
-          docker run -i -t $APP_NAME_LOCAL bash
+          docker run --rm=true -i -t $APP_NAME_LOCAL bash
         else
           docker exec -i -t $instance bash
         fi
@@ -449,7 +447,7 @@ case "$1" in
         ;;
     test)
         ensureDocker
-        test.sh 0.1.0 $APP_NAME_LOCAL $APP_PORT_EXTERNAL $APP_PORT_INTERNAL $VM_NAME
+        build_scripts/test.sh 0.1.0 $APP_NAME_LOCAL $APP_PORT_EXTERNAL $APP_PORT_INTERNAL $VM_NAME
         ok "done"
         ;;
     update)
@@ -466,40 +464,21 @@ case "$1" in
         rm dev.latest
         ok "you have the latest version: $newversion"
         ;;
-    vpn)
-        bot "Fixing route table after Cisco VPN disconnect"
-        read -r -p "Did you disconnect VPN? [Y|n]" response
-        if [[ $response =~ ^(no|n|N) ]];then
-          bot "well do that and re-run this..."
-          exit 2;
-        fi
-        ok
-        VBOXNET=$(VBoxManage showvminfo $VM_NAME --machinereadable | grep hostonlyadapter | cut -d '"' -f 2)
-
-        if [ -z "$VBOXNET" ]; then
-          error "No vboxnet interface found for VM $VM_NAME"
-          exit -1;
-        fi
-        ip_address=$(docker-machine ip $VM_NAME)
-        ip_sub=$(echo $ip_address | sed 's/.[^\.]*$//g')
-        bot "Requires sudo:"
-        sudo route -n delete -net $ip_sub
-        sudo route -n add -net $ip_sub.0/24 -interface $VBOXNET
-        ok
-        ;;
     *)
         bot "Hi, I can do a few helpful development tricks.\n"
         echo -e "Run each as an argument to this script (e.g. './dev init'):\n"
         echo "clean - remove locally built docker containers and images relating to this app"
         echo "free - remove clutter (stopped containers and untagged images)"
         echo "init - initialize your development environment (installing and running the app)"
+        echo "insecure_registry - sets up Docker to connect to an insecure registry"
         echo "purge - uninstall virtualbox, destroy the dockerized-vm machine and uninstall all docker software"
+        echo "rebuild - rebuild the service"
         echo "restart - restart the service"
         echo "shell {version} - get a bash shell on the current running system or on a version from the hub"
         echo "start - start the service"
         echo "stop - stop the service"
         echo "test - test the service by running a docker image and pointing tests at the image"
+        echo "tool - choose between docker-machine or vagrant"
         echo "update - update the dev tool with the latest automation scripts"
-        echo "vpn - fix routing table after disconnecting from Cisco Anyconnect VPN client"
         ;;
 esac
