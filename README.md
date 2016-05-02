@@ -34,7 +34,13 @@ It uses Homebrew to install and maintain docker on OSX.
 
 # Developer Getting Started
 
-This application is built using Docker, which creates a Production equivalent VM environment on your system. It will mount the git repo app directory into the VM so you can still work on your native OS but run the app in a sandbox.
+This application is built using Docker, which creates a Production equivalent environment on your system. It will mount the git repo app directory into the docker container so you can still work on your native OS but run the app in a sandbox.
+
+If you are using the new Beta Docker for Mac, set
+```
+export $DOCKER_NATIVE=true
+```
+before running.
 
 Download and run the setup:
 ```
@@ -45,6 +51,7 @@ cd dockerized
 # once you see the new shell prompt, run
 ./dev start
 ```
+
 
 When init completes, it will automatically launch a browser pointing to the running app.
 

@@ -3,5 +3,5 @@ web:
   ports:
    - "3695:3000"
   volumes:
-   - _SYNCDIR_:/app
+   - ./app:/app
   env_file: .env
