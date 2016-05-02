@@ -11,7 +11,7 @@
 #
 # @author Adam Eivy                       #
 # @maintainer Joseph Sturtevant           #
-# DockerDev: 2.1.1                        #
+# DockerDev: 2.2.0                        #
 ###########################################
 
 
@@ -352,27 +352,6 @@ case "$1" in
 
         bot "working on "$APP_ORG/$APP_NAME:$APP_PORT_EXTERNAL;
 
-        need_tools=0
-        install_homebrew
-        require_tap synack/docker
-        if [[ $RSYNC == true ]];then
-          require_brew docker-rsync
-        fi
-
-        needed_software=( "docker" "docker-compose" "docker-machine" "vboxmanage" )
-        for sft in "${needed_software[@]}"; do
-          checkInstall $sft
-          if [ $? != 0 ]; then
-            need_tools=1
-          fi
-        done
-
-        if [ $need_tools == 1 ]; then
-          install_brewcask
-          require_cask dockertoolbox
-          ok
-        fi
-
         # setup docker-compose.yml
         me=$(whoami)
         dir=$(pwd)
@@ -383,14 +362,41 @@ case "$1" in
         if [[ -e ./dev.init.sh ]]; then
           source ./dev.init.sh
         fi
+        if [[ $RSYNC == true ]];then
+          ensureMount
+        fi
 
-        ensureMount
+        read -r -p "are you running Native Docker for Mac/Windows? [y|N]" response
+        if [[ $response =~ ^(y|Y|yes) ]];then
+          dockerStart
+        else
+          need_tools=0
+          install_homebrew
+          if [[ $RSYNC == true ]];then
+            require_tap synack/docker
+            require_brew docker-rsync
+          fi
 
-        echo "launching quickstart shell. once this is done"
-        echo "cd "$(pwd)
-        echo "./dev start"
+          needed_software=( "docker" "docker-compose" "docker-machine" "vboxmanage" )
+          for sft in "${needed_software[@]}"; do
+            checkInstall $sft
+            if [ $? != 0 ]; then
+              need_tools=1
+            fi
+          done
 
-        bash --login '/Applications/Docker/Docker Quickstart Terminal.app/Contents/Resources/Scripts/start.sh'
+          if [ $need_tools == 1 ]; then
+            install_brewcask
+            require_cask dockertoolbox
+            ok
+          fi
+
+          echo "launching quickstart shell. once this is done"
+          echo "cd "$(pwd)
+          echo "./dev start"
+
+          bash --login '/Applications/Docker/Docker Quickstart Terminal.app/Contents/Resources/Scripts/start.sh'
+        fi
         ;;
     insecure)
         insecureRegistry $2
