@@ -161,3 +161,8 @@ doctoc .
 # brew install tree (if you don't have it)
 tree -I 'node_modules|lib'
 ```
+
+## Support
+Hey dude! Help me out for a couple of :beers:!
+
+[![Beerpay](https://beerpay.io/atomantic/dockerized/badge.svg?style=beer-square)](https://beerpay.io/atomantic/dockerized)
