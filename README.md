@@ -1,5 +1,4 @@
 [dotfiles]: https://github.com/atomantic/dotfiles#readme
-[docker_toolbox]: https://www.docker.com/toolbox
 
 # Sample Dockerized app
 Generated with [generator-dockerize](https://github.com/atomantic/generator-dockerize)
@@ -30,17 +29,10 @@ Generated with [generator-dockerize](https://github.com/atomantic/generator-dock
 # What is this?
 
 This is a sample app that uses Docker to automate dev setup and create consistency in deployed environments.
-It uses Homebrew to install and maintain docker on OSX.
 
 # Developer Getting Started
 
 This application is built using Docker, which creates a Production equivalent environment on your system. It will mount the git repo app directory into the docker container so you can still work on your native OS but run the app in a sandbox.
-
-If you are using the new Beta Docker for Mac, set
-```
-export $DOCKER_NATIVE=true
-```
-before running.
 
 Download and run the setup:
 ```
@@ -111,18 +103,12 @@ export APP_NAME="dockerized"
 export APP_PORT_EXTERNAL=4103
 # the port your app listens on (will not conflict with other apps)
 export APP_PORT_INTERNAL=3000
-# the VM name for the virtualbox VM. You can leave this as dockerized-vm and put all your apps in that virtualbox image
-export VM_NAME="default"
 # the docker hub repo. Leave this alone for now
 export DOCKER_REPO="hub.docker.com:5000"
-# The time it takes to create your docker image.
-# The app bootstrap will delay launching the browser for this many seconds
-# on first `dev init` call
-export VM_CREATE_TIME=120
 ```
 
 ## docker-compose.tmpl
-At runtime, we will use this as a template for creating the `docker-compose.yml` file, which will add your current working directory as the source for the rsync to the docker nodes. Since this path might be different on multiple developer machines, we use the template and add `docker-compose.yml` to `.gitignore`
+At runtime, we will use this as a template for creating the `docker-compose.yml` file, which will add your current working directory as the source for the docker nodes. Since this path might be different on multiple developer machines, we use the template and add `docker-compose.yml` to `.gitignore`
 
 ## Dockerfile
 This is the file that defines your actual Application. This is what will build both your local development environment and your production environment--YES, they are the same!
